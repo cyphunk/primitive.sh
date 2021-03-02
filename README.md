@@ -1,4 +1,4 @@
-Primitive linux management scripts that attempt to avoid any abstractions and more compatible with older systems. 
+Primitive linux management scripts that attempts to avoid abstractions and be more compatible with older systems. 
 
 Primitives: 
  - ``monitor`` manage external monitor/lcd
