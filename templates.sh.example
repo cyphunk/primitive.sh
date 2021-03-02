@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# Template shell script with useful functions I use often
+
+###
+# Check that this script ($0) only modifable by root
+#  Avoid potential local priviledge escalation vulnerabilities.
+###
+root_check ()
+{
+    l=($(/usr/bin/ls -l `/usr/bin/readlink -f $0`))
+    [ ${l[0]:2:1} != "-" ] && [ "${l[2]}" != "root" ] ||
+    [ ${l[0]:5:1} != "-" ] && [ "${l[3]}" != "root" ] ||
+    [ ${l[0]:8:1} != "-" ] && { echo -e "only root should be able to modify\n${l[@]}"; exit 1;}
+}
+root_check
+
+###########
+# DEFINE THESE THINGS
+#
+#
+         var="a value"
+# and describe another but keep everything spaced on
+# equal sign so that it looks nicer
+    variable="something"
+# need these commands
+        grep="grep"
+         awk="awk"
+#
+# Done
+#
+
+# usage()
+# shown is style where string printed
+# for alternative use case statements with docu as comment and then call usage_self from helpers.sh
+usage() { cat <<EOM
+$0 [--flag --anotherflag] <file1> [<file2> ...]
+
+Optional flags:
+
+--flag
+    a discription which is extended only up to 80 char and break
+    line after
+
+--anotherflag
+EOM
+exit 1
+}
+test $# -lt 1 && usage
+
+
+trap 'echo "Error line $LINENO"' ERR # thrown when 'false' called
+set -e                               # exit on any error
+
+[ "$this" == "$that" ] \
+    && echo "do that"
+
+###
+# stop if a command is missing
+###
+require_commands () 
+{
+    err=0
+    for cmd in $*; do
+        command -v $cmd >/dev/null && continue || { echo "$cmd command not found."; err=1; }
+    done
+    test $err -eq 1 && exit 1
+}
+grep="grep"
+awk="awk"
+require_commands $grep $awk
+
+
+###########
+# Defaults & Argument parsing
+#
+#
+test -z "$FLAG" && export FLAG=0
+test -z "$ANOTHERFLAG" && export ANOTHERFLAG=0
+while true; do
+    case "$1" in
+        --flag)         export FLAG=1;        shift 1;;
+        --anotherflag)  export ANOTHERFLAG=1; shift 1;;
+        --help|-h)      usage; exit 1;;
+        *) break;;
+    esac
+done
+
+
+
+###########
+#
+# CODE
+#
+###########
+
+TARGET=$1
+
+CMD1="$grep something $1"
+echo "doing $CMD1"
+eval $CMD1
+
+
+
+###########
+# Execute next target
+# Because the right way of looping an operation over args is boring
+#
+if [ $# -gt 1 ]; then
+	shift
+	$0 $@
+fi

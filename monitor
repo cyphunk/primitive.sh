@@ -1,0 +1,112 @@
+#!/usr/bin/bash
+# Script to setup external display. Assumes setups with
+# a laptop display and no more than ONE External display.
+
+require_commands () 
+{
+    err=0
+    for cmd in $*; do
+        command -v $cmd >/dev/null && continue || { echo "$cmd command not found."; err=1; }
+    done
+    test $err -eq 1 && exit 1
+}
+require_commands grep sed xargs xrandr
+
+# create usage from case statement. 
+# Strict formatting: space tabbed exactly 2 or 4 depth
+# 
+#   case "$1" in
+#     list)
+#     # description line
+#     # description line2 
+#     # ...
+usage_self ()
+{
+    echo -en "usage: $(basename "$0") ";
+    grep  -P '^  {2,4}[^ \(\*]*\)' $0 | sed -e 's/)//g' -e 's/ +/ /g' -e 's/--//g' | xargs | sed 's/ /\|/g' ;
+    echo "";
+    grep -P '^ {2,4}[^ \(\*]*\)' -A 30 $0 | grep -P -B 1 '^ {2,4}#' | sed -e 's/# //' -e 's/--//g' ;
+    echo "";
+}
+
+# monitor names with resolution defined=active
+ACTIVE=$(xrandr | grep -E " connected (primary )?[1-9]+" | sed -e "s/\([A-Z0-9]\+\) connected.*/\1/")
+# laptop always connected, first in name list:
+LAPTOP=$(echo "$ACTIVE" | head -1)
+# all possible monitors detected
+CONNECTED=$(xrandr | grep " connected " | sed -e "s/\([A-Z0-9]\+\) connected.*/\1/")
+# all except laptop
+OTHER=$(echo "$CONNECTED" | grep -v "$LAPTOP")
+
+case "$1" in
+  list)
+  # List available display ports and connection status
+		xrandr --query | \
+			egrep 'connected|disconnected' | \
+			awk '{print $1" "$2}' | \
+			sed 's/ connected/ connected <--/' | \
+			egrep --color '\S* '
+		;;
+  connect)
+  # Setup external display. 
+  # arguments:  [left|right|above|below|mirror] [port]
+  #   default possition assumed left.
+  #   default port assumed to be first connected monitor other than laptop lcd
+  #   examples:
+  #    $0 left
+  #    $0 VGA1 right
+  #    $0 mirror DP1
+  #  will monitor and remove configuration on disconnect
+
+		#echo -e "ACTIVE:\n$ACTIVE\nCONNECTED:\n$CONNECTED\n"
+		#echo -e "LAPTOP:$LAPTOP OTHER:$OTHER\n"
+
+		if [ -z "$OTHER" ]; then
+			echo -e "No external connected\nAvailable:"
+			$0 list
+			exit 1
+		fi
+
+		PORT=$(echo "$OTHER" | tail -1)
+		POS="--left-of $LAPTOP"
+
+		for arg in "${@:2}"; do
+			case "$arg" in
+				right) POS="--right-of $LAPTOP" ;;
+				above) POS="--above $LAPTOP" ;;
+				below) POS="--below $LAPTOP" ;;
+				mirror) POS="" ;;
+				left) ;;
+				*)
+			if echo "$CONNECTED" | grep -q "$arg"; then
+				PORT="$arg"
+			else
+				echo "Could not find connected display named \"$arg\""
+				$0 list
+				exit 1
+						fi
+			;;
+			esac
+		done
+		echo "Connecting \"$PORT\" at \"$POS\""
+		echo xrandr --output $PORT --auto $POS
+		xrandr --output $PORT --auto $POS
+		(while [ 1 ]; do sleep 1; xrandr | grep -q "$PORT disconnected" && $0 disconnect && break; done) &
+
+		;;
+		disconnect)
+		# disconnect from first non-laptop
+		# assumes monitor is still connected
+		PORT=$(echo "$OTHER" | head -1)
+		# if disconnect called while monitor connected PORT populated, else not and can just run auto
+		test -n "$PORT" && xrandr --output $PORT --off
+		# Disconnect display.
+		xrandr --auto
+	;;
+
+  *)
+		usage_self
+	;;
+esac
+
+exit 0
