@@ -5,7 +5,10 @@
 #  Avoid potential local priviledge escalation vulnerabilities.
 root_check ()
 {
-    l=($(/usr/bin/ls -l `/usr/bin/readlink -f $0`))
+    # check symlink security as well
+    test -L $0 \
+    && l=($(cd $(dirname $1) && pwd)) \
+    || l=($(/usr/bin/ls -l `/usr/bin/readlink -f $0`))
     [ ${l[0]:2:1} != "-" ] && [ "${l[2]}" != "root" ] ||
     [ ${l[0]:5:1} != "-" ] && [ "${l[3]}" != "root" ] ||
     [ ${l[0]:8:1} != "-" ] && { echo -e "only root should be able to modify\n${l[@]}"; exit 1;}
