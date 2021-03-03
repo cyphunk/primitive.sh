@@ -10,7 +10,7 @@ root_check ()
 {
     # check symlink security as well
     test -L $0 \
-    && l=($(cd $(dirname $1) && pwd)) \
+    && l=($(cd $(dirname $1) && /usr/bin/ls -l `pwd`)) \
     || l=($(/usr/bin/ls -l `/usr/bin/readlink -f $0`))
     [ ${l[0]:2:1} != "-" ] && [ "${l[2]}" != "root" ] ||
     [ ${l[0]:5:1} != "-" ] && [ "${l[3]}" != "root" ] ||
@@ -25,7 +25,7 @@ require_commands ()
     done
     test $err -eq 1 && exit 1
 }
-require_commands sg iptables
+require_commands sg iptables nc
 
 
 GRP=no-internet ## change to your taste
