@@ -1,0 +1,12 @@
+### time sync
+# turn off ntpd and use this when you need to sync time
+alias ntponce='sudo ntpdate pool.ntp.org && sudo hwclock --systohc'
+### httpdserver simpler version
+#alias httpdquick="python2 -m SimpleHTTPServer 8000"
+### httpdserver
+# change `wlan0` to your network card and install qr to generate qr code
+alias httpdquick="ifconfig wlan0 | grep inet && sudo ufw allow 8000 && qr "http://`ip -brief addr show dev wlan0 | awk '{print $3}' | cut -d/ -f 1`:8000" && python2 -m SimpleHTTPServer 8000"
+
+
+alias curl='curl -A "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_8) AppleWebKit/535.11 (KHTML, like Gecko) Chrome/17.0.963.83 Safari/535.11"'
+alias curltor='curl --socks5-hostname 127.0.0.1:9050 -A "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_8) AppleWebKit/535.11 (KHTML, like Gecko) Chrome/17.0.963.83 Safari/535.11"'
