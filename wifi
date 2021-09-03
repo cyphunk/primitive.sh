@@ -21,27 +21,17 @@ WIFIPASSWDFILE="$HOME/.wifidb"
 
 # Check that this script ($0) only modifable by root
 #  Avoid potential local priviledge escalation vulnerabilities.
-root_check ()
-{
-    l=($(/usr/bin/ls -l `/usr/bin/readlink -f $0`))
-    [ ${l[0]:2:1} != "-" ] && [ "${l[2]}" != "root" ] ||
-    [ ${l[0]:5:1} != "-" ] && [ "${l[3]}" != "root" ] ||
-    [ ${l[0]:8:1} != "-" ] && { echo -e "only root should be able to modify\n${l[@]}"; exit 1;}
-}
-
-root_check
+l=($(/usr/bin/ls -l `/usr/bin/readlink -f $0`))
+([ ${l[0]:2:1} != "-" ] && [ "${l[2]}" != "root" ]) ||
+([ ${l[0]:5:1} != "-" ] && [ "${l[3]}" != "root" ]) ||
+ [ ${l[0]:8:1} != "-" ] && { echo -e "only root should be able to modify\n${l[@]}"; exit 1;}
 
 # stop if a command is missing
-require_commands () 
-{
-    err=0
-    for cmd in $*; do
-        command -v $cmd >/dev/null && continue || { echo "$cmd command not found."; err=1; }
-    done
-    test $err -eq 1 && exit 1
-}
-require_commands grep cat head ls awk xargs sed sort
-require_commands watch iwconfig iw ifconfig wpa_supplicant dhclient sudo
+err=0
+for cmd in watch iwconfig iw ifconfig wpa_supplicant dhclient sudo; do
+  command -v $cmd >/dev/null && continue || { echo "need $cmd. command not found."; err=1; }
+done
+test $err -eq 1 && exit 1
 
 ###
 # create usage from case statement. 
@@ -54,11 +44,15 @@ require_commands watch iwconfig iw ifconfig wpa_supplicant dhclient sudo
 #    # ...
 usage_self ()
 {
-    echo -en "usage: $(basename "$0") ";
-    grep  -P '^ {2,4}[^ \(\*]*\)' $0 | sed -e 's/)//g' -e 's/ +/ /g' -e 's/--//g' | xargs | sed 's/ /\|/g' ;
-    echo "";
-    grep -P '^ {2,4}[^ \(\*]*\)' -A 30 $0 | grep -P -B 1 '^ {2,4}#' | sed -e 's/# //' -e 's/--//g' ;
-    echo "";
+  echo -en "usage: $(basename "$0") ";
+  grep  -P '^ {2,4}[^ \(\*]*\)' $0 \
+  | sed -e 's/)//g' -e 's/ +/ /g' -e 's/--//g' \
+  | xargs | sed 's/ /\|/g' ;
+  echo "";
+  grep -P '^ {2,4}[^ \(\*]*\)' -A 30 $0 \
+  | grep -P -B 1 '^ {2,4}#' \
+  | sed -e 's/# //' -e 's/--//g' ;
+  echo "";
 }
 
 #ETH="wlp3s0" #AKA Love SystemD or die!
@@ -94,18 +88,19 @@ case "$1" in
     sudo ifconfig $ETH up
     networks=$(sudo iwlist $ETH scanning)
     while [ $? -ne 0 ]; do  
-	    sleep 1
-    	networks=$(sudo iwlist $ETH scanning)
+      sleep 1
+      networks=$(sudo iwlist $ETH scanning)
     done
     echo "$networks" | \
-	egrep 'ESSID|Quality|Encryption key:|Channel:|Address:' | \
-	xargs | sed \
-		-e 's/Cell [^ ]* \- Address:/\n/g' \
-		-e 's/Quality\|ESSID:/\t/g' \
-		-e 's/Signal:\| *Signal level\|Encryption key:\|Channel://g'  | \
-	sort --field-separator="=" -k 2
-	echo "   Quality: current/max ---^    ^"
-	echo "   Signal level: lower better --'"
+      egrep 'ESSID|Quality|Encryption key:|Channel:|Address:' \
+      | xargs \
+      | sed \
+        -e 's/Cell [^ ]* \- Address:/\n/g' \
+        -e 's/Quality\|ESSID:/\t/g' \
+        -e 's/Signal:\| *Signal level\|Encryption key:\|Channel://g'  \
+      | sort --field-separator="=" -k 2
+    echo "   Quality: current/max ---^    ^"
+    echo "   Signal level: lower better --'"
   ;;
   auto)
   # connect to first known ssid
@@ -114,91 +109,109 @@ case "$1" in
     oIFS=$IFS
     IFS=$'\n'
     networks=$(sudo iwlist $ETH scanning)
-    ssids=$(echo "$networks" | egrep 'ESSID' | sed 's/ *ESSID:"\|"//g')
-    list=$(echo "$networks" | egrep 'ESSID|Quality|Encryption key:' | xargs | sed 's/Quality=/\n/g' | sed 's/ESSID:\| *Signal level\|Encryption key://g' | sed 's/ on / on  /g' | sort --field-separator="=" -k 1)
-	for knownssid in "${!WIFIPASSWD[@]}"; do
-		if [ "$(echo "$ssids" | grep "^$knownssid$")x" != "x" ]; then
-            echo "# Will connect to $knownssid"
-            set -- $knownssid
-            break
-		fi
+    ssids=$(echo "$networks" \
+            | egrep 'ESSID' \
+            | sed 's/ *ESSID:"\|"//g')
+    list=$(echo "$networks" \
+           | egrep 'ESSID|Quality|Encryption key:' \
+           | xargs \
+           | sed 's/Quality=/\n/g' \
+           | sed 's/ESSID:\| *Signal level\|Encryption key://g' \
+           | sed 's/ on / on  /g' \
+           | sort --field-separator="=" -k 1)
+    for knownssid in "${!WIFIPASSWD[@]}"; do
+      if [ "$(echo "$ssids" | grep "^$knownssid$")x" != "x" ]; then
+        echo "# Will connect to $knownssid"
+        set -- $knownssid
+        break
+      fi
     done
     IFS=$oIFS
     if [ "$1" == "auto" ]; then
-        echo "# no known ssid found"
-        echo "$list"
-        exit
+      echo "# no known ssid found"
+      echo "$list"
+      exit
     fi
-    $0 $1
+    $0 connect "${@}"
     ;;
   connect|*)
   # connect to SSID passed as argument
     test "$1" == "connect" && shift
+    test -z "$1" && $0 help && exit 1
 
     echo "# Connecting to SSID \"$1\""
     sudo killall wpa_supplicant 2>/dev/null
-    /bin/ps -C dhclient -f h | grep $ETH | awk '{print $2}' | xargs sudo kill 2>/dev/null
+    /bin/ps -C dhclient -f h \
+    | grep $ETH \
+    | awk '{print $2}' \
+    | xargs sudo kill 2>/dev/null
 
     if [ $# -eq 2 ]; then
-        echo "# Setting password"
-        PASSWORD="$2"
+      echo "# Setting password"
+      PASSWORD="$2"
     elif [ "${WIFIPASSWD[$1]+ISSET}" == "ISSET" ]; then
-        echo "# Have password"
-        PASSWORD="${WIFIPASSWD["$1"]}"
+      echo "# Have password"
+      PASSWORD="${WIFIPASSWD["$1"]}"
     else
-        read -s -p "Password for $1 (or none): " PASSWORD
+      read -s -p "Password for $1 (or none): " PASSWORD
     fi
     WIFIPASSWD["$1"]="$PASSWORD"
     tmp=$(declare -p WIFIPASSWD | sed -e 's/\[/\n\[/g' )
-	echo "$tmp" > "${WIFIPASSWDFILE}"
+    echo "$tmp" > "${WIFIPASSWDFILE}"
     sudo chmod 770 "$WIFIPASSWDFILE"
 
     if [ "$PASSWORD" == "" ]; then
-        echo -e "\n# Connecting without password"
-	    set -x
-        sudo iwconfig $ETH essid "$1" key open || exit
-        set +x
-        if [ $? -ne 0 ]; then
-            echo "!! Error: couldn't connect"
-            exit
-        fi
+      echo -e "\n# Connecting without password"
+      set -x
+      sudo iwconfig $ETH essid "$1" key open || exit
+      set +x
+      if [ $? -ne 0 ]; then
+          echo "!! Error: couldn't connect"
+          exit
+      fi
     else
-        echo "# Connecting with password "
-    	tmpfile=$(mktemp)
-    	#echo "# iwconfig with key"
-    	#sudo nmcli dev wifi connect "$1" password "$PASSWORD"
-        #sudo iwconfig wlp3s0 essid "$1" key "s:$PASSWORD" \
-        set -x
-        wpa_passphrase "$1" "$PASSWORD" > $tmpfile  || exit
-        set +x
-        wpafile=/tmp/wpa_supplicant.${ETH}.log
-        rm $wpafile 2>/dev/null
-        set -x
-        sudo wpa_supplicant -B -i $ETH -c $tmpfile -d -f $wpafile
-        set +x
-        #  tail -f /tmp/wpa_supplicant.wlp3s0.log | egrep 'reason|SUCCESS|result'
-        while [ 1 ]; do
-            grep -q 'reason=WRONG_KEY' $wpafile && echo -e "\n# Bad password?" && exit
-            grep -q 'INTERFACE_DISABLED' $wpafile && echo -e "# Interface disabled" && exit
-            grep -q 'result=SUCCESS' $wpafile && echo -e "\n# Good password" && break
-            sleep 0.5
-            echo -n "."
-        done
-        if [ $? -ne 0 ]; then
-            echo "!! Error: couldn't connect with password"
-            exit
-        fi
+      echo "# Connecting with password "
+      tmpfile=$(mktemp)
+      #echo "# iwconfig with key"
+      #sudo nmcli dev wifi connect "$1" password "$PASSWORD"
+      #sudo iwconfig wlp3s0 essid "$1" key "s:$PASSWORD" \
+      set -x
+      wpa_passphrase "$1" "$PASSWORD" > $tmpfile  || exit
+      set +x
+      wpafile=/tmp/wpa_supplicant.${ETH}.log
+      rm $wpafile 2>/dev/null
+      set -x
+      sudo wpa_supplicant -B -i $ETH -c $tmpfile -d -f $wpafile
+      set +x
+      #  tail -f /tmp/wpa_supplicant.wlp3s0.log | egrep 'reason|SUCCESS|result'
+      while [ 1 ]; do
+          grep -q 'reason=WRONG_KEY' $wpafile && echo -e "\n# Bad password?" && exit
+          grep -q 'INTERFACE_DISABLED' $wpafile && echo -e "# Interface disabled" && exit
+          grep -q 'result=SUCCESS' $wpafile && echo -e "\n# Good password" && break
+          sleep 0.5
+          echo -n "."
+      done
+      if [ $? -ne 0 ]; then
+          echo "!! Error: couldn't connect with password"
+          exit
+      fi
     fi
     sudo rm /tmp/dhclient.${ETH}.leases 2>/dev/null
-	# clear default gw first
-	sudo route del default 2>/dev/null # error on no default exist
-	echo "initial-interval 1;" > /tmp/dhclient.conf
-	echo "backoff-cutoff 1;" >> /tmp/dhclient.conf
-    echo "option rfc3442-classless-static-routes code 121 = array of unsigned integer 8;" >> /tmp/dhclient.conf
-	echo "request subnet-mask, broadcast-address, time-offset, routers, domain-name-servers, interface-mtu, rfc3442-classless-static-routes;" >> /tmp/dhclient.conf
-	set -x
-    sudo dhclient -1 -v -cf /tmp/dhclient.conf -pf /run/dhclient.${ETH}.pid -lf /tmp/dhclient.${ETH}.leases $ETH 2>&1 | egrep 'DHCP|bound'
-	set +x
+    # clear default gw first
+    sudo route del default 2>/dev/null # error on no default exist
+    echo "initial-interval 1;" > /tmp/dhclient.conf
+    echo "backoff-cutoff 2;" >> /tmp/dhclient.conf
+    echo "option rfc3442-classless-static-routes code 121 = array of unsigned integer 8;" \
+      >> /tmp/dhclient.conf
+    echo "request subnet-mask, broadcast-address, time-offset, routers, domain-name-servers, interface-mtu, rfc3442-classless-static-routes;" \
+      >> /tmp/dhclient.conf
+    set -x
+    sudo dhclient -1 -v \
+         -cf /tmp/dhclient.conf \
+         -pf /run/dhclient.${ETH}.pid \
+         -lf /tmp/dhclient.${ETH}.leases $ETH 2>&1 \
+         | egrep 'DHCP|bound'
+    set +x
     echo "Capitve portal check, one of:"
     echo "curl -v http://captive.apple.com"
     echo "curl -v http://detectportal.firefox.com/success.txt"
