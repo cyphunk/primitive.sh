@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# setup and destroy printer
+
+l=($(/usr/bin/ls -l `/usr/bin/readlink -f $0`))
+([ ${l[0]:2:1} != "-" ] && [ "${l[2]}" != "root" ]) ||
+([ ${l[0]:5:1} != "-" ] && [ "${l[3]}" != "root" ]) ||
+ [ ${l[0]:8:1} != "-" ] && { echo -e "only root should be able to modify:\n${l[@]}"; exit 1;}
+
+# stop if a command is missing
+err=0
+for cmd in avahi-daemon avahi-browse /usr/lib/cups/backend/snmp /usr/lib/cups/backend/usb systemctl lpinfo lpadmin lpoptions lpstat  awk gawk grep fgrep sort ; do
+    command -v $cmd >/dev/null && continue || { echo "$cmd command not found."; err=1; }
+done
+test $err -eq 1 && exit 1
+
+
+read -p "Setup printer? [y]/n " YN
+if [ "$YN" != "n" ]; then
+    echo "Select backend" 
+    select BACKEND in snmp usb; do break; done
+
+    IFS=$'\n'
+    if [[ "$BACKEND" == "snmp" ]]; then
+      # search for printers
+      # in future replace with sudo lpinfo -v ?
+      sudo avahi-daemon &
+      while [ 1 ]; do
+        sleep 2
+        echo -en "."
+        PRINTERIPS=$(
+          avahi-browse _ipp._tcp --resolve --terminate --parsable | fgrep -i 'printer' | grep ^= | gawk -F\; '{print $8}' | sort -u ) 
+          # --all  no longer works, therefor we use _ipp._tcp 
+        test -n "$PRINTERIPS" && echo && break
+      done
+      sudo killall avahi-daemon
+      sleep 1
+      echo -e "\nSelect printer IP address:"
+      select IP in $PRINTERIPS; do break; done
+      backend=$(/usr/lib/cups/backend/snmp $IP)
+    else
+      backend=$(sudo /usr/lib/cups/backend/usb)
+    fi
+
+    #echo "$backend"
+    URI=$(echo "$backend" | awk '{print $2}')
+    NAME=$(echo "$backend" | awk -F '"' '{print $2}')
+    test -n "$NAME" || NAME="ERROR"
+    echo "uri: $URI"
+    echo "name: $NAME"
+set -x
+    # sudo systemctl start org.cups.cupsd.service
+    sudo systemctl start cups
+set +x
+    DRIVERS=$(lpinfo -m | grep -i "$NAME")
+    select _DRIVER in $DRIVERS; do break; done
+    DRIVER=$(echo "$_DRIVER" | awk '{print $1}')
+    echo -e "driver:\n$DRIVER"
+
+    read -p "continue?"
+    if test "$DRIVER" = ""; then
+	set -x
+        sudo lpadmin -p PRINTER -E -v $URI
+	set +x
+    else
+	set -x
+        sudo lpadmin -p PRINTER -E -v $URI  -m $DRIVER
+	set +x
+    fi
+
+    echo
+    echo "OPTIONS"
+    lpoptions -d PRINTER -l
+    echo
+fi
+
+
+# sudo systemctl start org.cups.cupsd.service
+sudo systemctl start cups
+echo "use:"
+echo lpr -P PRINTER -o page-ranges=1 -# 1 -o Duplex=DuplexNoTumble -o PageSize=A4 -o fit-to-page -o ColorModel=CMYGray FILE
+echo "-# <number of copies>"
+echo "set defaults:"
+echo lpoptions -d PRINTER -o MediaType=PLAIN_HIGH -o Duplex=DuplexNoTumble
+echo
+echo
+
+YN="n"
+read -p "Stop/del printing? y/[n] " YN
+if [ "$YN" == "y" ]; then
+    sudo lpadmin -x PRINTER
+    lpstat -s #list queues
+    # sudo systemctl stop org.cups.cupsd.service
+    sudo systemctl stop cups
+fi
+
+
+# check queue
+#lpq -a
+# remove entry
+#lprm
+#lprm - # remove all
+# non standard driver packages
+#ap list foomatic-db-nonfree-ppds    # no hp
+#ap list foomatic-db-nonfree         # no hp
+#ap list foomatic-db-gutenprint-ppds # not installed yet
+#ap list hplip                       # not installed yet
