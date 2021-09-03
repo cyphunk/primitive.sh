@@ -6,26 +6,19 @@ if [ ! "$1" ]; then
   exit 1; 
 fi
 
-root_check ()
-{
-    # check symlink security as well
-    test -L $0 \
-    && l=($(cd $(dirname $1) && /usr/bin/ls -l `pwd`)) \
-    || l=($(/usr/bin/ls -l `/usr/bin/readlink -f $0`))
-    [ ${l[0]:2:1} != "-" ] && [ "${l[2]}" != "root" ] ||
-    [ ${l[0]:5:1} != "-" ] && [ "${l[3]}" != "root" ] ||
-    [ ${l[0]:8:1} != "-" ] && { echo -e "only root should be able to modify\n${l[@]}"; exit 1;}
-}
-root_check
-require_commands () 
-{
-    err=0
-    for cmd in $*; do
-        command -v $cmd >/dev/null && continue || { echo "$cmd command not found."; err=1; }
-    done
-    test $err -eq 1 && exit 1
-}
-require_commands sg iptables nc
+# Check that this script ($0) only modifable by root
+#  Avoid potential local priviledge escalation vulnerabilities.
+l=($(/usr/bin/ls -l `/usr/bin/readlink -f $0`))
+([ ${l[0]:2:1} != "-" ] && [ "${l[2]}" != "root" ]) ||
+([ ${l[0]:5:1} != "-" ] && [ "${l[3]}" != "root" ]) ||
+ [ ${l[0]:8:1} != "-" ] && { echo -e "only root should be able to modify\n${l[@]}"; exit 1;}
+
+# stop if a command is missing
+err=0
+for cmd in sg iptables nc; do
+  command -v $cmd >/dev/null && continue || { echo "$cmd command not found."; err=1; }
+done
+test $err -eq 1 && exit 1
 
 
 GRP=no-internet ## change to your taste

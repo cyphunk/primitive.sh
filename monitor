@@ -2,15 +2,12 @@
 # Script to setup external display. Assumes setups with
 # a laptop display and no more than ONE External display.
 
-require_commands () 
-{
-    err=0
-    for cmd in $*; do
-        command -v $cmd >/dev/null && continue || { echo "$cmd command not found."; err=1; }
-    done
-    test $err -eq 1 && exit 1
-}
-require_commands grep sed xargs xrandr
+# stop if a command is missing
+err=0
+for cmd in xrandr; do
+		command -v $cmd >/dev/null && continue || { echo "$cmd command not found."; err=1; }
+done
+test $err -eq 1 && exit 1
 
 # create usage from case statement. 
 # Strict formatting: space tabbed exactly 2 or 4 depth
@@ -49,7 +46,7 @@ case "$1" in
 		;;
   connect)
   # Setup external display. 
-  # arguments:  [left|right|above|below|mirror] [port]
+  # arguments:  [left|right|above|top|below|bottom|mirror] [port]
   #   default possition assumed left.
   #   default port assumed to be first connected monitor other than laptop lcd
   #   examples:
@@ -73,8 +70,8 @@ case "$1" in
 		for arg in "${@:2}"; do
 			case "$arg" in
 				right) POS="--right-of $LAPTOP" ;;
-				above) POS="--above $LAPTOP" ;;
-				below) POS="--below $LAPTOP" ;;
+				above|top) POS="--above $LAPTOP" ;;
+				below|bottom) POS="--below $LAPTOP" ;;
 				mirror) POS="" ;;
 				left) ;;
 				*)
