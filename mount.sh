@@ -30,7 +30,7 @@ done
 test $err -eq 1 && exit 1
 
 IFS=$'\n'
-DEVS=$(lsblk --exclude $EXCLUDEBLK -n --paths --output NAME,FSTYPE,MOUNTPOINT,LABEL | egrep -v "${EXCLUDE}")
+DEVS=$(lsblk --exclude $EXCLUDEBLK -n --paths --output NAME,FSTYPE,TYPE,MOUNTPOINT,LABEL | egrep -v "${EXCLUDE}")
 
 if [ $# -eq 0 ]; then
   echo -e "Usage:\n$USAGE"
@@ -40,6 +40,7 @@ if [ $# -eq 0 ]; then
 		break
 	done
 	FSTYPE=$(echo $DEV | sed 's/^ *[^\/]*//' | awk '{print $2}')
+	TYPE=$(echo $DEV | sed 's/^ *[^\/]*//' | awk '{print $3}')
 	DEV=$(echo $DEV | sed 's/^ *[^\/]*//' | awk '{print $1}')
 else
 	DEV="$1"
@@ -81,11 +82,18 @@ elif [ ${DEV: -4} == ".img" ]; then
   	echo sudo mount -o loop,rw,uid=$myUID,umask=0077 $DEV $MNT
   	sudo mount -o loop,rw,uid=$myUID,umask=0077 $DEV $MNT || exit
   fi
-elif [ "$FSTYPE" == "crypto_LUKS" ]; then
-  echo "$DEV is a crypto_LUKS partition"
-  MNT=/mnt/$(basename $DEV)
+elif [ "$FSTYPE" == "crypto_LUKS" ] || [ "$TYPE" == "crypt" ] ; then
   NAME=$(basename $DEV)
-  DEVLUKS=crypt_$NAME
+  if sudo cryptsetup isLuks $DEV ; then
+    echo "$DEV is crypto_LUKS type root device"
+    MNT=/mnt/$(basename $DEV)
+    DEVLUKS=crypt_$NAME
+  else 
+    echo "$DEV is crypt type mapped device (implies already mounted)"
+    MNT=$(lsblk --output MOUNTPOINT $DEV | tail -1)
+    NAME=$(basename $DEV)
+    DEVLUKS=$NAME
+  fi
   # figure out if mounted without depending on lsblk
   mount | grep -q $DEVLUKS && MOUNTED_AT=$MNT
   if [ "${MOUNTED_AT}" != "" ]; then
@@ -95,17 +103,13 @@ elif [ "$FSTYPE" == "crypto_LUKS" ]; then
 		set +x
 		sudo dmsetup ls
   else
-		mkdir $MNT 2>/dev/null
-    echo sudo cryptsetup luksOpen $DEV $DEVLUKS
-    sudo cryptsetup luksOpen $DEV $DEVLUKS
-    #echo sudo mount -o loop,rw,uid=$myUID,umask=0077 $DEVLUKS $MNT
-    #sudo mount -o loop,rw,uid=$myUID,umask=0077 /dev/mapper/$DEVLUKS $MNT 
+		sudo mkdir $MNT 2>/dev/null
+		echo sudo cryptsetup luksOpen $DEV $DEVLUKS
+		sudo cryptsetup luksOpen $DEV $DEVLUKS
 		set -x
-    sudo mount -o user,nofail,noauto,x-gvfs-show  /dev/mapper/$DEVLUKS $MNT  \
+		sudo mount -o user,nofail,noauto,x-gvfs-show  /dev/mapper/$DEVLUKS $MNT  \
 		|| exit
 		set +x
-		echo "script cannot unmount. run manually when finished"
-		echo "sudo umount $MNT && sudo cryptsetup close $DEVLUKS"        
   fi
 else
   if [ "${MOUNTED_AT}" != "" ]; then
