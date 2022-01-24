@@ -4,7 +4,7 @@
 # also supportes mounting .img files 
 
 #EXCLUDE='sda|nvme0n1|vg0-root|luks|docker'
-EXCLUDE='docker'
+EXCLUDE=${PRIMITIVE_MOUNT_EXCLUDE:='docker'}
 #EXCLUDEBLK="7" # <major_num>. 7 loop
 EXCLUDEBLK="999" # <major_num>. 7 loop
 FILEMANAGERCMD="dbus-launch xdg-open" # called on mount when X available
