@@ -3,7 +3,8 @@
 # also supportes mounting .tc files as truecrypt containers
 # also supportes mounting .img files 
 
-EXCLUDE='sda|vg0-root|luks|docker'
+#EXCLUDE='sda|nvme0n1|vg0-root|luks|docker'
+EXCLUDE='docker'
 #EXCLUDEBLK="7" # <major_num>. 7 loop
 EXCLUDEBLK="999" # <major_num>. 7 loop
 FILEMANAGERCMD="dbus-launch xdg-open" # called on mount when X available
