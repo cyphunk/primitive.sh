@@ -9,6 +9,8 @@
 #   it is 2115 and linux still can't dynamicly select with multi interfaces.
 #
 #   wifi         list ssid's
+#   wifi help
+#   wifi off     block wifi card (rfkill)
 #   wifi auto    connect to known networks
 #   wifi <ssid>  connect to SSID. Use passwd in db else request passwd
 #   wifi <ssid> <passwd>
@@ -16,6 +18,7 @@
 # Note: passwords are stored in a plaintext file
 # Note: need ifconfig and older utils. It will stay this
 #       way as many older embedded systems do not have ip,etc
+#       and this script is meant to work on desktop and embedded
 
 WIFIPASSWDFILE="$HOME/.wifidb"
 
@@ -28,7 +31,7 @@ l=($(/usr/bin/ls -l `/usr/bin/readlink -f $0`))
 
 # stop if a command is missing
 err=0
-for cmd in watch iwconfig iw ifconfig wpa_supplicant dhclient sudo; do
+for cmd in watch iwconfig iw ifconfig wpa_supplicant dhclient sudo rfkill; do
   command -v $cmd >/dev/null && continue || { echo "need $cmd. command not found."; err=1; }
 done
 test $err -eq 1 && exit 1
@@ -68,6 +71,7 @@ fi
 
 case "$1" in
   help)
+  # show help
     usage_self
   ;;
   monitor)
@@ -82,9 +86,15 @@ case "$1" in
   status)
   # show current status of wifi card
     iwconfig $ETH
+    rfkill list wifi
+  ;;
+  off)
+  # turn off wifi card (rfkill)
+    sudo rfkill block wifi
   ;;
   list)
   # list available ssids
+    rfkill list wifi | grep -q yes && sudo rfkill unblock wifi 
     sudo ifconfig $ETH up
     networks=$(sudo iwlist $ETH scanning)
     while [ $? -ne 0 ]; do  
@@ -105,6 +115,7 @@ case "$1" in
   auto)
   # connect to first known ssid
     echo "# Attempting to connect to known networks"
+    rfkill list wifi | grep -q yes && sudo rfkill unblock wifi 
     sudo ifconfig $ETH up || exit
     oIFS=$IFS
     IFS=$'\n'
@@ -140,6 +151,7 @@ case "$1" in
     test -z "$1" && $0 help && exit 1
 
     echo "# Connecting to SSID \"$1\""
+    rfkill list wifi | grep -q yes && sudo rfkill unblock wifi 
     sudo killall wpa_supplicant 2>/dev/null
     /bin/ps -C dhclient -f h \
     | grep $ETH \
@@ -149,16 +161,21 @@ case "$1" in
     if [ $# -eq 2 ]; then
       echo "# Setting password"
       PASSWORD="$2"
+      SAVEPASSWD=1
     elif [ "${WIFIPASSWD[$1]+ISSET}" == "ISSET" ]; then
       echo "# Have password"
       PASSWORD="${WIFIPASSWD["$1"]}"
     else
       read -s -p "Password for $1 (or none): " PASSWORD
+      SAVEPASSWD=1
     fi
-    WIFIPASSWD["$1"]="$PASSWORD"
-    tmp=$(declare -p WIFIPASSWD | sed -e 's/\[/\n\[/g' )
-    echo "$tmp" > "${WIFIPASSWDFILE}"
-    sudo chmod 770 "$WIFIPASSWDFILE"
+
+    if [ "$SAVEPASSWD" == "1" ]; then
+      WIFIPASSWD["$1"]="$PASSWORD"
+      tmp=$(declare -p WIFIPASSWD | sed -e 's/\[/\n\[/g' )
+      echo "$tmp" > "${WIFIPASSWDFILE}"
+      sudo chmod 770 "$WIFIPASSWDFILE"
+    fi
 
     if [ "$PASSWORD" == "" ]; then
       echo -e "\n# Connecting without password"
