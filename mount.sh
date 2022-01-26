@@ -7,7 +7,7 @@
 EXCLUDE=${PRIMITIVE_MOUNT_EXCLUDE:='docker'}
 #EXCLUDEBLK="7" # <major_num>. 7 loop
 EXCLUDEBLK="999" # <major_num>. 7 loop
-FILEMANAGERCMD="dbus-launch xdg-open" # called on mount when X available
+FILEMANAGERCMD=${PRIMITIVE_MOUNT_FILEMANAGERCMD:="dbus-launch xdg-open"} # called on mount when X available
 
 USAGE=$(cat <<EOM
   $(basename $0) [/dev/blk [fs]]
@@ -18,9 +18,9 @@ EOM
 
 # sudo call integrity check: only root should be able to change script
 l=($(/usr/bin/ls -l `/usr/bin/readlink -f $0`))
-[ ${l[0]:2:1} != "-" ] && [ "${l[2]}" != "root" ] ||
-[ ${l[0]:5:1} != "-" ] && [ "${l[3]}" != "root" ] ||
-[ ${l[0]:8:1} != "-" ] && { echo -e "only root should be able to modify\n${l[@]}"; exit 1;}
+([ ${l[0]:2:1} != "-" ] && [ "${l[2]}" != "root" ]) ||
+([ ${l[0]:5:1} != "-" ] && [ "${l[3]}" != "root" ]) ||
+ [ ${l[0]:8:1} != "-" ] && { echo -e "only root should be able to modify\n${l[@]}"; exit 1;}
 
 # stop if a command is missing
 err=0
