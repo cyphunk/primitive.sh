@@ -1,0 +1,38 @@
+#!/usr/bin/bash
+
+# webcam: enable or disable webcam toggle.
+#         useful for power savings or privacy.
+# 
+# provide as argument usb product id or set:
+# PRIMITIVE_WEBCAM_USBPRODUCTID=56d5
+
+# sudo call integrity check: only root should be able to change script
+l=($(/usr/bin/ls -l `/usr/bin/readlink -f $0`))
+([ ${l[0]:2:1} != "-" ] && [ "${l[2]}" != "root" ]) ||
+([ ${l[0]:5:1} != "-" ] && [ "${l[3]}" != "root" ]) ||
+ [ ${l[0]:8:1} != "-" ] && { echo -e "only root should be able to modify\n${l[@]}"; exit 1;}
+
+
+# define the usb product id (lsusb) part of device:
+USBPRODUCTID=${PRIMITIVE_WEBCAM_USBPRODUCTID:="$1"}
+
+test -z "$USBPRODUCTID" \
+&& echo "Provide a product id from usb devices:" && lsusb && exit 1 
+
+# map product id to sysfs device id number:
+file=$(grep "$USBPRODUCTID" /sys/bus/usb/devices/*/idProduct)
+DRIVERNUM=$(echo $file|sed 's#/sys/bus/usb/devices/\([^/]*\)/.*#\1#')
+test -z "$DRIVERNUM" && echo "Error: could not get driver number." && exit 1
+
+lsmod | grep -q uvcvideo 
+if [ $? -ne 0 ] ; then
+  echo "is disabled. enabling"
+  #echo "3-6" > /sys/bus/usb/drivers/usb/bind
+  echo "$DRIVERNUM" > /sys/bus/usb/drivers/usb/bind
+  modprobe uvcvideo
+else
+  echo "is enabled. disabling"
+  echo "$DRIVERNUM" > /sys/bus/usb/drivers/usb/unbind
+  rmmod uvcvideo
+fi
+
