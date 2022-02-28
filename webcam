@@ -29,7 +29,7 @@ if [ $? -ne 0 ] ; then
   echo "is disabled. enabling"
   #echo "3-6" > /sys/bus/usb/drivers/usb/bind
   echo "$DRIVERNUM" > /sys/bus/usb/drivers/usb/bind
-  modprobe uvcvideo
+  modprobe uvcvideo quirks=512 #https://nixaid.com/linux-razer-blade-stealth/
 else
   echo "is enabled. disabling"
   echo "$DRIVERNUM" > /sys/bus/usb/drivers/usb/unbind

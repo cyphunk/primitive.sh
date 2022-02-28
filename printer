@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # setup and destroy printer
 
+IFS=" "
 l=($(/usr/bin/ls -l `/usr/bin/readlink -f $0`))
 ([ ${l[0]:2:1} != "-" ] && [ "${l[2]}" != "root" ]) ||
 ([ ${l[0]:5:1} != "-" ] && [ "${l[3]}" != "root" ]) ||
@@ -30,6 +31,7 @@ if [ "$YN" != "n" ]; then
         PRINTERIPS=$(
           avahi-browse _ipp._tcp --resolve --terminate --parsable | fgrep -i 'printer' | grep ^= | gawk -F\; '{print $8}' | sort -u ) 
           # --all  no longer works, therefor we use _ipp._tcp 
+          # additional detail: sudo /usr/lib/cups/backend/dnssd
         test -n "$PRINTERIPS" && echo && break
       done
       sudo killall avahi-daemon
@@ -99,6 +101,8 @@ fi
 # remove entry
 #lprm
 #lprm - # remove all
+# test
+#echo test | lpr -P PRINTER
 # non standard driver packages
 #ap list foomatic-db-nonfree-ppds    # no hp
 #ap list foomatic-db-nonfree         # no hp
