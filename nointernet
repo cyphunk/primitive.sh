@@ -2,7 +2,10 @@
 # run command with group that has internet blocked
 
 if [ ! "$1" ]; then 
-  echo "usage: $0 <command> [arguments]"; 
+  echo "usage: $0 [--lan] [--clear] <command> [arguments]"; 
+  echo
+  echo "--lan to allow local area network access"
+  echo "--clear remove the iptable rules"
   exit 1; 
 fi
 
@@ -11,7 +14,8 @@ fi
 l=($(/usr/bin/ls -l `/usr/bin/readlink -f $0`))
 ([ ${l[0]:2:1} != "-" ] && [ "${l[2]}" != "root" ]) ||
 ([ ${l[0]:5:1} != "-" ] && [ "${l[3]}" != "root" ]) ||
- [ ${l[0]:8:1} != "-" ] && { echo -e "only root should be able to modify\n${l[@]}"; exit 1;}
+ [ ${l[0]:8:1} != "-" ] && 
+ { echo -e "only root should be able to modify\n${l[@]}"; [ $DEBUG ] || exit 1; }
 
 # stop if a command is missing
 err=0
@@ -20,6 +24,11 @@ for cmd in sg iptables nc; do
 done
 test $err -eq 1 && exit 1
 
+
+LANALLOWED=0
+test "$1" = "--lan" && LANALLOWED=1 && shift
+CLEARRULES=0
+test "$1" = "--clear" && CLEARRULES=1 && shift
 
 GRP=no-internet ## change to your taste
 
@@ -38,13 +47,34 @@ id $usr | grep -q "$GRP" \
 #echo "Flush other rules that might interferer"
 #sudo iptables -F OUTPUT || exit
 
+if [ "$CLEARRULES" = "1" ]; then
+	echo "Clearing rules"
+	GRPGUID=$(getent group no-internet | awk -F: '{print $3}')
+	IFS=$'\n'
+	for rule in $(sudo iptables -S | grep "\--gid-owner $GRPGUID" | sed 's/^-A//') ; do
+		echo $rule
+		eval sudo iptables -D $rule
+	done
+fi
+
 echo "Enabling rules"
 if sudo iptables -L | grep -q "owner GID match $GRP" ; then
 	echo "Rules already enabled"
 else
-	sudo iptables -A OUTPUT -m owner --gid-owner $GRP -j LOG --log-prefix 'PACKET DROPPED: ' --log-level 0 || exit
+	# Following rules block all network access:
 	#sudo iptables -A OUTPUT -m owner --gid-owner $GRP -j DROP || exit
 	sudo iptables -I OUTPUT 1 -m owner --gid-owner $GRP -j DROP || exit
+	sudo iptables -I OUTPUT 1 -m owner --gid-owner $GRP -j LOG --log-prefix 'NOINTERNET DROP: ' --log-level 0 || exit
+
+	# Allow access to localnetwork?
+	# test "$LANALLOWED" = "1" && (
+	#   exit; echo this isnt working yet
+	# 	echo "allow LAN"
+	# 	sudo iptables -I OUTPUT 1 -m owner --gid-owner $GRP -d 127.0.0.0/8 -j ACCEPT
+	# 	sudo iptables -I OUTPUT 1 -m owner --gid-owner $GRP -d 10.0.0.0/8 -j ACCEPT
+	# 	sudo iptables -I OUTPUT 1 -m owner --gid-owner $GRP -d 172.16.0.0/20 -j ACCEPT
+	# 	sudo iptables -I OUTPUT 1 -m owner --gid-owner $GRP -d 192.168.0.0/24 -j ACCEPT
+	# )
 fi
 
 # MAKE SURE NET IS DOWN using ping OR nc
