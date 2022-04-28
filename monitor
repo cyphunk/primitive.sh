@@ -46,14 +46,16 @@ case "$1" in
 		;;
   connect)
   # Setup external display. 
-  # arguments:  [left|right|above|top|below|bottom|mirror] [port]
+  # arguments:  [left|right|above|top|below|bottom|mirror] [port] [WxH]
   #   default possition assumed left.
   #   default port assumed to be first connected monitor other than laptop lcd
+  #   WxH will force scaling onto the --auto default resolution
   #   examples:
   #    $0 left
   #    $0 VGA1 right
-  #    $0 mirror DP1
-  #  will monitor and remove configuration on disconnect
+  #    $0 mirror VGA1
+  #    $0 VGA1 right 1920x1080
+  # in background will remove configuration on disconnect
 
 		#echo -e "ACTIVE:\n$ACTIVE\nCONNECTED:\n$CONNECTED\n"
 		#echo -e "LAPTOP:$LAPTOP OTHER:$OTHER\n"
@@ -66,6 +68,7 @@ case "$1" in
 
 		PORT=$(echo "$OTHER" | tail -1)
 		POS="--left-of $LAPTOP"
+		SCALE=""
 
 		for arg in "${@:2}"; do
 			case "$arg" in
@@ -75,19 +78,22 @@ case "$1" in
 				mirror) POS="" ;;
 				left) ;;
 				*)
-			if echo "$CONNECTED" | grep -q "$arg"; then
-				PORT="$arg"
-			else
-				echo "Could not find connected display named \"$arg\""
-				$0 list
-				exit 1
-						fi
+					if echo "$arg" | egrep -q '^[0-9]*x[0-9]*$'; then
+						echo "scale to $arg"
+						SCALE="--scale-from $arg"
+					elif echo "$CONNECTED" | grep -q "$arg"; then
+						PORT="$arg"
+					else
+						echo "Could not find connected display named \"$arg\""
+						$0 list
+						exit 1
+					fi
 			;;
 			esac
 		done
 		echo "Connecting \"$PORT\" at \"$POS\""
-		echo xrandr --output $PORT --auto $POS
-		xrandr --output $PORT --auto $POS
+		echo xrandr --output $PORT --auto $POS $SCALE
+		xrandr --output $PORT --auto $POS $SCALE
 		(while [ 1 ]; do sleep 1; xrandr | grep -q "$PORT disconnected" && $0 disconnect && break; done) &
 
 		;;
