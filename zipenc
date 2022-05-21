@@ -1,0 +1,43 @@
+#!/bin/bash
+trap 'echo "Error line $LINENO"' ERR # thrown when 'false' called
+set -e                               # exit on any error
+
+# stop if a command is missing
+err=0
+for cmd in zip unzip; do
+  command -v $cmd >/dev/null && continue || { echo "need $cmd. command not found."; err=1; }
+done
+test $err -eq 1 && exit 1
+
+
+if [ $# -lt 1 ]; then
+  echo "$0 file [file ...]"
+  exit
+fi
+
+FILE1=$(basename "$(readlink -f "$1")")
+NAME="${FILE1%.*}"
+
+test -d "$NAME" || mkdir "$NAME"
+cp $* "$NAME/."
+
+echo "Provide password for zip \"$NAME.zip\""
+p=$(mktemp | tr '[:upper:]' '[:lower:]'); 
+echo -e "For example: \"${p#*.}\"\n"
+read -s -p "Password: " PASSWORD
+
+zip --quiet --encrypt --password "$PASSWORD" "$NAME.zip" "$NAME"/*
+rm -rf "$NAME"
+
+echo -en "\n\nTesting zip... "
+srcdir=$(pwd)
+test -d "/tmp/$NAME" || mkdir "/tmp/$NAME"
+unzip -q -P "$PASSWORD" "$NAME.zip" -d /tmp
+for file in "$@"; do
+	a=$(stat -c%s "$srcdir/$file")
+	b=$(stat -c%s "/tmp/$NAME/$file")
+	test $a -eq $b || break
+done
+test $? -eq 0 && echo "succeeded" || echo "FAILED. $file sizes didn't match" 
+
+rm -rf $NAME /tmp/$NAME
