@@ -14,63 +14,87 @@ for cmd in avahi-daemon avahi-browse /usr/lib/cups/backend/snmp /usr/lib/cups/ba
 done
 test $err -eq 1 && exit 1
 
+IFS=$'\n'
 
-read -p "Setup printer? [y]/n " YN
+read -p "Setup new printer? [y]/n " YN
 if [ "$YN" != "n" ]; then
-    echo "Select backend" 
+
+    echo
+    echo "Select backend:"
     select BACKEND in snmp usb; do break; done
 
-    IFS=$'\n'
+
     if [[ "$BACKEND" == "snmp" ]]; then
-      # search for printers
-      # in future replace with sudo lpinfo -v ?
-      sudo avahi-daemon &
+
+      echo
+      echo "Searching network for printers:"
+
+      sudo avahi-daemon & # replace with lpinfo -v ?
       while [ 1 ]; do
         sleep 2
         echo -en "."
         PRINTERIPS=$(
-          avahi-browse _ipp._tcp --resolve --terminate --parsable | fgrep -i 'printer' | grep ^= | gawk -F\; '{print $8}' | sort -u ) 
+          avahi-browse _ipp._tcp --resolve --terminate --parsable \
+          | fgrep -i 'printer' | grep ^= | gawk -F\; '{print $8}' | sort -u ) 
+          # result:
+          #   =;wlan0;IPv4;EPSON\032Series;Internet Printer;local;EPSOND.local;192.168.1.2
           # --all  no longer works, therefor we use _ipp._tcp 
           # additional detail: sudo /usr/lib/cups/backend/dnssd
         test -n "$PRINTERIPS" && echo && break
       done
       sudo killall avahi-daemon
       sleep 1
-      echo -e "\nSelect printer IP address:"
+
+      echo
+      echo "Select printer IP address:"
+
       select IP in $PRINTERIPS; do break; done
       backend=$(/usr/lib/cups/backend/snmp $IP)
+      # result:
+      #   network lpd://192.168.1.2:515/PASSTHRU "EPSON Series" "EPSON Series"
     else
       backend=$(sudo /usr/lib/cups/backend/usb)
     fi
 
-    #echo "$backend"
     URI=$(echo "$backend" | awk '{print $2}')
     NAME=$(echo "$backend" | awk -F '"' '{print $2}')
     test -n "$NAME" || NAME="ERROR"
     echo "uri: $URI"
     echo "name: $NAME"
-set -x
+
+    set -x
     # sudo systemctl start org.cups.cupsd.service
     sudo systemctl start cups
-set +x
+    set +x
     DRIVERS=$(lpinfo -m | grep -i "$NAME")
-    select _DRIVER in $DRIVERS; do break; done
-    DRIVER=$(echo "$_DRIVER" | awk '{print $1}')
-    echo -e "driver:\n$DRIVER"
-
-    read -p "continue?"
-    if test "$DRIVER" = ""; then
-	set -x
-        sudo lpadmin -p PRINTER -E -v $URI
-	set +x
-    else
-	set -x
-        sudo lpadmin -p PRINTER -E -v $URI  -m $DRIVER
-	set +x
+    if [ -z "$DRIVERS" ]; then
+      echo "// Could not find avalable driver for printer named \"$NAME\""
+      echo "// Try searching for printer name in available printer driver packages:"
+      echo "//  apt-file search \".*$NAME.*ppd\""
+      echo "//  pkgfile -s -g \".*$NAME.*ppd\""
     fi
 
     echo
-    echo "OPTIONS"
+    echo "Select printer driver (or try without driver):"
+
+    select _DRIVER in $DRIVERS; do break; done
+    DRIVER=$(echo "$_DRIVER" | awk '{print $1}')
+    echo "Driver:"
+    echo $DRIVER
+    read -p "continue? (ctrl+c to exit) "
+   
+    if test "$DRIVER" = ""; then
+      set -x
+      sudo lpadmin -p PRINTER -E -v $URI
+      set +x
+    else
+      set -x
+      sudo lpadmin -p PRINTER -E -v $URI  -m $DRIVER
+      set +x
+    fi
+
+    echo
+    echo "Available printer options"
     lpoptions -d PRINTER -l
     echo
 fi
@@ -78,7 +102,7 @@ fi
 
 # sudo systemctl start org.cups.cupsd.service
 sudo systemctl start cups
-echo "use:"
+echo "Use printer, example:"
 echo lpr -P PRINTER -o page-ranges=1 -# 1 -o Duplex=DuplexNoTumble -o PageSize=A4 -o fit-to-page -o ColorModel=CMYGray FILE
 echo "-# <number of copies>"
 echo "set defaults:"
@@ -87,7 +111,7 @@ echo
 echo
 
 YN="n"
-read -p "Stop/del printing? y/[n] " YN
+read -p "Stop/del printer? y/[n] " YN
 if [ "$YN" == "y" ]; then
     sudo lpadmin -x PRINTER
     lpstat -s #list queues
