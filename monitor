@@ -1,6 +1,5 @@
 #!/usr/bin/bash
-# Script to setup external display. Assumes setups with
-# a laptop display and no more than ONE External display.
+# Script to setup external display(s). 
 
 # stop if a command is missing
 err=0
@@ -26,14 +25,16 @@ usage_self ()
     echo "";
 }
 
-# monitor names with resolution defined=active
+# monitor names with resolution defined=active. no resolution means connected by not active
 ACTIVE=$(xrandr | grep -E " connected (primary )?[1-9]+" | sed -e "s/\([A-Z0-9]\+\) connected.*/\1/")
 # laptop always connected, first in name list:
 LAPTOP=$(echo "$ACTIVE" | head -1)
+# last active. In multimonitor setups will append next monitor to this
+ACTIVELAST=$(echo "$ACTIVE" | tail -1)
 # all possible monitors detected
 CONNECTED=$(xrandr | grep " connected " | sed -e "s/\([A-Z0-9]\+\) connected.*/\1/")
-# all except laptop
-OTHER=$(echo "$CONNECTED" | grep -v "$LAPTOP")
+# all except items already actively connected
+OTHER=$(xrandr | grep " connected " | grep -vE " connected (primary )?[1-9]+" | sed -e "s/\([A-Z0-9]\+\) connected.*/\1/")
 
 case "$1" in
   list)
@@ -46,7 +47,7 @@ case "$1" in
 		;;
   connect)
   # Setup external display. 
-  # arguments:  [left|right|above|top|below|bottom|mirror] [port] [WxH]
+  # arguments:  [left|right|above|top|below|bottom|mirror] [port] [WxH] [rotate]
   #   default possition assumed left.
   #   default port assumed to be first connected monitor other than laptop lcd
   #   WxH will force scaling onto the --auto default resolution
@@ -55,6 +56,7 @@ case "$1" in
   #    $0 VGA1 right
   #    $0 mirror VGA1
   #    $0 VGA1 right 1920x1080
+  #    $0 VGA1 right rotate
   # in background will remove configuration on disconnect
 
 		#echo -e "ACTIVE:\n$ACTIVE\nCONNECTED:\n$CONNECTED\n"
@@ -67,22 +69,27 @@ case "$1" in
 		fi
 
 		PORT=$(echo "$OTHER" | tail -1)
-		POS="--left-of $LAPTOP"
+		POS="--left-of $ACTIVELAST"
 		SCALE=""
+		ROTATE=""
 
 		for arg in "${@:2}"; do
 			case "$arg" in
-				right) POS="--right-of $LAPTOP" ;;
-				above|top) POS="--above $LAPTOP" ;;
-				below|bottom) POS="--below $LAPTOP" ;;
-				mirror) POS="" ;;
-				left) ;;
+				right)        POS="--right-of $ACTIVELAST" ;;
+				left) 	      POS="--left-of $ACTIVELAST" ;;
+				above|top)    POS="--above $ACTIVELAST" ;;
+				below|bottom) POS="--below $ACTIVELAST" ;;
+				mirror)       POS="" ;;
+				rotate)       ROTATE="--rotate right" ;;
 				*)
+					# XxY resolution argument
 					if echo "$arg" | egrep -q '^[0-9]*x[0-9]*$'; then
 						echo "scale to $arg"
 						SCALE="--scale-from $arg"
+					# argument defining port
 					elif echo "$CONNECTED" | grep -q "$arg"; then
 						PORT="$arg"
+					# finally assume argument is port name that isnt connected
 					else
 						echo "Could not find connected display named \"$arg\""
 						$0 list
@@ -92,12 +99,13 @@ case "$1" in
 			esac
 		done
 		echo "Connecting \"$PORT\" at \"$POS\""
-		echo xrandr --output $PORT --auto $POS $SCALE
-		xrandr --output $PORT --auto $POS $SCALE
+		echo xrandr --output $PORT --auto $POS $SCALE $ROTATE
+		xrandr --output $PORT --auto $POS $SCALE $ROTATE
+		# Once port is disconnected remove the xrandr settings
 		(while [ 1 ]; do sleep 1; xrandr | grep -q "$PORT disconnected" && $0 disconnect && break; done) &
 
 		;;
-		disconnect)
+	disconnect)
 		# disconnect from first non-laptop
 		# assumes monitor is still connected
 		PORT=$(echo "$OTHER" | head -1)
