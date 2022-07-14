@@ -47,20 +47,20 @@ case "$1" in
 		;;
   connect)
   # Setup external display. 
-  # arguments:  [left|right|above|top|below|bottom|mirror] [port] [WxH] [rotate]
+  # arguments: [port] [left|right|above|top|below|bottom|mirror] [of <PORT>] [WxH] [rotate]
   #   default possition assumed left.
   #   default port assumed to be first connected monitor other than laptop lcd
   #   WxH will force scaling onto the --auto default resolution
+  #   position of arguments is flexible and can be in any order
   #   examples:
   #    $0 left
   #    $0 VGA1 right
   #    $0 mirror VGA1
   #    $0 VGA1 right 1920x1080
   #    $0 VGA1 right rotate
+  #    $0 VGA1 right of VGA2 rotate
+  #    $0 right of VGA2 rotate
   # in background will remove configuration on disconnect
-
-		#echo -e "ACTIVE:\n$ACTIVE\nCONNECTED:\n$CONNECTED\n"
-		#echo -e "LAPTOP:$LAPTOP OTHER:$OTHER\n"
 
 		if [ -z "$OTHER" ]; then
 			echo -e "No external connected\nAvailable:"
@@ -68,17 +68,24 @@ case "$1" in
 			exit 1
 		fi
 
+		# Change default "ACTIVEPORT" of argument "of [PORT]" provided
+		if echo $@ | grep -q ' of ' ; then
+			TARGET=$(echo $@ | sed 's/.* of \([^ ]*\).*/\1/')
+		else
+			TARGET=$ACTIVELAST
+		fi 
+
 		PORT=$(echo "$OTHER" | tail -1)
-		POS="--left-of $ACTIVELAST"
+		POS="--left-of $TARGET"
 		SCALE=""
 		ROTATE=""
 
 		for arg in "${@:2}"; do
 			case "$arg" in
-				right)        POS="--right-of $ACTIVELAST" ;;
-				left) 	      POS="--left-of $ACTIVELAST" ;;
-				above|top)    POS="--above $ACTIVELAST" ;;
-				below|bottom) POS="--below $ACTIVELAST" ;;
+				right)        POS="--right-of $TARGET" ;;
+				left) 	      POS="--left-of  $TARGET" ;;
+				above|top)    POS="--above $TARGET" ;;
+				below|bottom) POS="--below $TARGET" ;;
 				mirror)       POS="" ;;
 				rotate)       ROTATE="--rotate right" ;;
 				*)
@@ -86,7 +93,7 @@ case "$1" in
 					if echo "$arg" | egrep -q '^[0-9]*x[0-9]*$'; then
 						echo "scale to $arg"
 						SCALE="--scale-from $arg"
-					# argument defining port
+					# argument defining PORT (monitor being configured now)
 					elif echo "$CONNECTED" | grep -q "$arg"; then
 						PORT="$arg"
 					# finally assume argument is port name that isnt connected
