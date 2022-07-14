@@ -29,6 +29,8 @@ usage_self ()
 ACTIVE=$(xrandr | grep -E " connected (primary )?[1-9]+" | sed -e "s/\([A-Z0-9]\+\) connected.*/\1/")
 # laptop always connected, first in name list:
 LAPTOP=$(echo "$ACTIVE" | head -1)
+# monitors actively connected with resolution, except laptop
+ACTIVEEXTERNAL=$(echo "$ACTIVE" | grep -v "$LAPTOP")
 # last active. In multimonitor setups will append next monitor to this
 ACTIVELAST=$(echo "$ACTIVE" | tail -1)
 # all possible monitors detected
@@ -109,17 +111,28 @@ case "$1" in
 		echo xrandr --output $PORT --auto $POS $SCALE $ROTATE
 		xrandr --output $PORT --auto $POS $SCALE $ROTATE
 		# Once port is disconnected remove the xrandr settings
-		(while [ 1 ]; do sleep 1; xrandr | grep -q "$PORT disconnected" && $0 disconnect && break; done) &
+		(while [ 1 ]; do sleep 1; xrandr | grep -q "$PORT disconnected" && $0 disconnect $PORT && break; done) &
 
 		;;
 	disconnect)
 		# disconnect from first non-laptop
-		# assumes monitor is still connected
-		PORT=$(echo "$OTHER" | head -1)
-		# if disconnect called while monitor connected PORT populated, else not and can just run auto
-		test -n "$PORT" && xrandr --output $PORT --off
-		# Disconnect display.
-		xrandr --auto
+		# handle conditions:
+		# - user requests to disconnect specific monitor
+		# - user requests to disconnect next connected monitor
+		if test -n "$2" ; then
+			PORT=$2
+		else
+			# assumes at least one external monitor is still connected
+			PORT=$(echo "$ACTIVEEXTERNAL" | head -1)
+		fi
+		if  test -n "$PORT" ; then
+			echo xrandr --output $PORT --off
+			xrandr --output $PORT --off
+		else
+			echo "Error: either no monitors left to disconnect or missing argument (args: $2)"
+		fi
+		# Check if need in future under condition were monitors disconnected but for some reason desktop canvas still extends beyond current single monitor setup
+		#xrandr --auto
 	;;
 
   *)
