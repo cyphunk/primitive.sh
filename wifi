@@ -102,7 +102,7 @@ case "$1" in
       networks=$(sudo iwlist $ETH scanning)
     done
     echo "$networks" | \
-      egrep 'ESSID|Quality|Encryption key:|Channel:|Address:' \
+      grep -E 'ESSID|Quality|Encryption key:|Channel:|Address:' \
       | xargs \
       | sed \
         -e 's/Cell [^ ]* \- Address:/\n/g' \
@@ -121,10 +121,10 @@ case "$1" in
     IFS=$'\n'
     networks=$(sudo iwlist $ETH scanning)
     ssids=$(echo "$networks" \
-            | egrep 'ESSID' \
+            | grep -E 'ESSID' \
             | sed 's/ *ESSID:"\|"//g')
     list=$(echo "$networks" \
-           | egrep 'ESSID|Quality|Encryption key:' \
+           | grep -E 'ESSID|Quality|Encryption key:' \
            | xargs \
            | sed 's/Quality=/\n/g' \
            | sed 's/ESSID:\| *Signal level\|Encryption key://g' \
@@ -200,7 +200,7 @@ case "$1" in
       set -x
       sudo wpa_supplicant -B -i $ETH -c $tmpfile -d -f $wpafile
       set +x
-      #  tail -f /tmp/wpa_supplicant.wlp3s0.log | egrep 'reason|SUCCESS|result'
+      #  tail -f /tmp/wpa_supplicant.wlp3s0.log | grep -E 'reason|SUCCESS|result'
       while [ 1 ]; do
           grep -q 'reason=WRONG_KEY' $wpafile && echo -e "\n# Bad password?" && exit
           grep -q 'INTERFACE_DISABLED' $wpafile && echo -e "# Interface disabled" && exit
@@ -227,7 +227,7 @@ case "$1" in
          -cf /tmp/dhclient.conf \
          -pf /run/dhclient.${ETH}.pid \
          -lf /tmp/dhclient.${ETH}.leases $ETH 2>&1 \
-         | egrep 'DHCP|bound'
+         | grep -E 'DHCP|bound'
     set +x
     echo "Capitve portal check, one of:"
     echo "curl -v http://captive.apple.com"

@@ -24,13 +24,13 @@ l=($(/usr/bin/ls -l `/usr/bin/readlink -f $0`))
 
 # stop if a command is missing
 err=0
-for cmd in lsblk lsof sudo mount  egrep awk sed cut id; do
+for cmd in lsblk lsof sudo mount grep awk sed cut id; do
   command -v $cmd >/dev/null && continue || { echo "need $cmd. command not found."; err=1; }
 done
 test $err -eq 1 && exit 1
 
 IFS=$'\n'
-DEVS=$(lsblk --exclude $EXCLUDEBLK -n --paths --output NAME,FSTYPE,TYPE,MOUNTPOINT,LABEL | egrep -v "${EXCLUDE}")
+DEVS=$(lsblk --exclude $EXCLUDEBLK -n --paths --output NAME,FSTYPE,TYPE,MOUNTPOINT,LABEL | grep -E -v "${EXCLUDE}")
 
 if [ $# -eq 0 ]; then
   echo -e "Usage:\n$USAGE"
@@ -78,9 +78,21 @@ elif [ ${DEV: -4} == ".img" ]; then
 		echo sudo umount $DEV 	
 		sudo umount $DEV || sudo lsof +d "${MOUNTED_AT}"        
   else
-		mkdir $MNT 2>/dev/null
+	sudo mkdir $MNT 2>/dev/null
   	echo sudo mount -o loop,rw,uid=$myUID,umask=0077 $DEV $MNT
   	sudo mount -o loop,rw,uid=$myUID,umask=0077 $DEV $MNT || exit
+  fi
+elif [ ${DEV: -4} == ".iso"  ]; then
+# NOT FULLY TESTED YET
+  echo "$DEV is iso file (read only)"
+  MNT=/mnt/$(basename $DEV)
+  if [ "${MOUNTED_AT}" != "" ]; then
+		echo sudo umount $DEV 	
+		sudo umount $DEV || sudo lsof +d "${MOUNTED_AT}"        
+  else
+	sudo mkdir $MNT 2>/dev/null
+  	echo sudo mount -o loop,uid=$myUID,umask=0077 $DEV $MNT
+  	sudo mount -o loop,uid=$myUID,umask=0077 $DEV $MNT || exit
   fi
 elif [ "$FSTYPE" == "crypto_LUKS" ] || [ "$TYPE" == "crypt" ] ; then
   NAME=$(basename $DEV)

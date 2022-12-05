@@ -28,8 +28,8 @@ SRC=$1
 DST=$2
 test "$3" == "-b" && BKP=$3
 DO="null" # enc&push or pull&dec
-echo "$SRC" | egrep -qi '.gpg$' && DO="pull&dec"
-echo "$DST" | egrep -qi '.gpg$' && DO="enc&push"
+echo "$SRC" | grep -E -qi '.gpg$' && DO="pull&dec"
+echo "$DST" | grep -E -qi '.gpg$' && DO="enc&push"
 [ "$DO" == "null" ] \
   && echo "error: either src or dst must be a .gpg file to indicate push or pull" && exit 1
 

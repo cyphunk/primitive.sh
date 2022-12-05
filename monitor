@@ -42,10 +42,10 @@ case "$1" in
   list)
   # List available display ports and connection status
 		xrandr --query | \
-			egrep 'connected|disconnected' | \
+			grep -E 'connected|disconnected' | \
 			awk '{print $1" "$2}' | \
 			sed 's/ connected/ connected <--/' | \
-			egrep --color '\S* '
+			grep -E --color '\S* '
 		;;
   connect)
   # Setup external display. 
@@ -92,7 +92,7 @@ case "$1" in
 				rotate)       ROTATE="--rotate right" ;;
 				*)
 					# XxY resolution argument
-					if echo "$arg" | egrep -q '^[0-9]*x[0-9]*$'; then
+					if echo "$arg" | grep -E -q '^[0-9]*x[0-9]*$'; then
 						echo "scale to $arg"
 						SCALE="--scale-from $arg"
 					# argument defining PORT (monitor being configured now)
