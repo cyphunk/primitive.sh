@@ -2,20 +2,14 @@
 trap 'echo "Error line $LINENO"' ERR # thrown when 'false' called
 set -e                               # exit on any error
 
-# stop if a command is missing
-err=0
-for cmd in gpg scp; do
-  command -v $cmd >/dev/null && continue || { echo "need $cmd. command not found."; err=1; }
-done
-test $err -eq 1 && exit 1
-
 
 if [ $# -lt 1 ]; then
     E=$(basename $0)
     echo "ENCRYPT & PUSH:"
     echo "$E ./src.txt   ./file.gpg      # single file"
     echo "$E ./dir       ./dir.gpg       # dir compressed"
-    echo "$E ./src.txt   server:file.gpg # scp to server"
+    echo "$E ./src.txt   server:file.gpg # to server"
+    echo "$E ./src.txt   ./file.gpg -k <email> # encrypt to gpg key"
     echo
     echo "PULL & DECRYPT"
     echo "$E ./dir.gpg       ./"
@@ -27,30 +21,43 @@ fi
 SRC=$1
 DST=$2
 test "$3" == "-b" && BKP=$3
+test "$3" == "-k" && KEY=$4
 DO="null" # enc&push or pull&dec
 echo "$SRC" | grep -E -qi '.gpg$' && DO="pull&dec"
 echo "$DST" | grep -E -qi '.gpg$' && DO="enc&push"
 [ "$DO" == "null" ] \
   && echo "error: either src or dst must be a .gpg file to indicate push or pull" && exit 1
-
+# set -x
 if [ "$DO" == "enc&push" ]; then
     test -e $SRC         || ( echo "$SRC not exist" && false )
     cd $(dirname $SRC)   || ( echo "error" && false )
     SRC=$(basename $SRC)
     if [ -d $SRC ]; then
-        tar -czf tmp.tar.gz || false 
-        gpg --symmetric --output $SRC.gpg tmp.tar.gz || false
-	rm tmp.tar.gz
+        tar -czf tmp.tar.gz $SRC || false 
+        test "$KEY" = "" \
+        && (gpg --symmetric --output $SRC.gpg tmp.tar.gz || false)
+        test "$KEY" != "" \
+        && (gpg --encrypt --recipient $KEY --output $SRC.gpg tmp.tar.gz || false)
+    	rm tmp.tar.gz
     else
-        gpg --symmetric --output $SRC.gpg $SRC           || false
+        test "$KEY" = "" \
+        && (gpg --symmetric --output $SRC.gpg $SRC           || false)
+        test "$KEY" != "" \
+        && (gpg --encrypt --recipient $KEY --output $SRC.gpg $SRC || false)
     fi
     scp $SRC.gpg $DST                                    || ( echo "err scp $SRC.gpg" && false )
     rm $SRC.gpg
     echo "PULL BACK:"
     echo "$(basename $0) $DST $SRC"
 elif [ "$DO" == "pull&dec" ]; then
+    # target is dir, else is file
+    #if test -d $DST; then
+    #    cd $DST
+    #    DST="./"
+    #fi
+
     # if src is remote, download
-    test ! -e $SRC && scp $SRC . || false
+    test ! -e $SRC && (scp $SRC . || false)
     SRCF=$(basename ${SRC#*:})
 
     file --brief $SRCF | grep -qi 'GPG'         || ( echo "$SRCF not gpg file" && false )
