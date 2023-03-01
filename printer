@@ -71,7 +71,7 @@ if [ "$YN" != "n" ]; then
       echo "// Could not find avalable driver for printer named \"$NAME\""
       echo "// Try searching for printer name in available printer driver packages:"
       echo "//  apt-file search \".*$NAME.*ppd\""
-      echo "//  pkgfile -s -g \".*$NAME.*ppd\""
+      echo "//  pkgfile -s -v -r -i \".*$NAME.*ppd\""
     fi
 
     echo
