@@ -1,31 +1,57 @@
 #!/usr/bin/env bash
 # setup and destroy printer
 
+PRINTERSAVEFILE="$HOME/.printerdb"
+
 IFS=" "
 l=($(/usr/bin/ls -l `/usr/bin/readlink -f $0`))
 ([ ${l[0]:2:1} != "-" ] && [ "${l[2]}" != "root" ]) ||
 ([ ${l[0]:5:1} != "-" ] && [ "${l[3]}" != "root" ]) ||
- [ ${l[0]:8:1} != "-" ] && { echo -e "only root should be able to modify:\n${l[@]}"; exit 1;}
+ [ ${l[0]:8:1} != "-" ] && { echo -e "only root should be able to modify:\n${l[@]}"; exit 1;
+}
+
 
 # stop if a command is missing
 err=0
-for cmd in avahi-daemon avahi-browse /usr/lib/cups/backend/snmp /usr/lib/cups/backend/usb systemctl lpinfo lpadmin lpoptions lpstat  awk gawk grep fgrep sort ; do
+for cmd in avahi-daemon avahi-browse /usr/lib/cups/backend/snmp /usr/lib/cups/backend/usb systemctl lpinfo lpadmin lpoptions lpstat awk gawk grep sort ; do
     command -v $cmd >/dev/null && continue || { echo "$cmd command not found."; err=1; }
 done
 test $err -eq 1 && exit 1
 
 IFS=$'\n'
 
-read -p "Setup new printer? [y]/n " YN
-if [ "$YN" != "n" ]; then
+# Wifi password db
+if [ -f "$PRINTERSAVEFILE" ]; then
+    source "$PRINTERSAVEFILE"
+else
+    declare -A PRINTERSAVE
+fi
 
+echo "n: setup NEW printer (default)"
+echo "e: choose EXISTING saved printer"
+echo "o: show current default printer OPTIONS"
+read -p "[n]/e/o: " CHOICE
+
+if [ "$CHOICE" == "o" ]; then
+    echo
+    echo "Will just shown currently configured PRINTER options"
+    echo
+elif [ "$CHOICE" == "e" ]; then
+    echo
+    echo "Select known saved printers from below"
+    select NAME in "${!PRINTERSAVE[@]}"; do break; done
+    URI=$(echo "${PRINTERSAVE[$NAME]}" | cut -d ' ' -f 1)
+    DRIVER=$(echo "${PRINTERSAVE[$NAME]}" | cut -d ' ' -f 2-)
+    echo "name: $NAME"
+    echo "uri: $URI"
+    echo "driver: $DRIVER"
+else
+    # default: setup new printer
     echo
     echo "Select backend:"
     select BACKEND in snmp usb; do break; done
 
-
     if [[ "$BACKEND" == "snmp" ]]; then
-
       echo
       echo "Searching network for printers:"
 
@@ -35,7 +61,7 @@ if [ "$YN" != "n" ]; then
         echo -en "."
         PRINTERIPS=$(
           avahi-browse _ipp._tcp --resolve --terminate --parsable \
-          | fgrep -i 'printer' | grep ^= | gawk -F\; '{print $8}' | sort -u ) 
+          | grep -F -i 'printer' | grep ^= | gawk -F\; '{print $8}' | sort -u ) 
           # result:
           #   =;wlan0;IPv4;EPSON\032Series;Internet Printer;local;EPSOND.local;192.168.1.2
           # --all  no longer works, therefor we use _ipp._tcp 
@@ -49,7 +75,14 @@ if [ "$YN" != "n" ]; then
       echo "Select printer IP address:"
 
       select IP in $PRINTERIPS; do break; done
-      backend=$(/usr/lib/cups/backend/snmp $IP)
+      
+      # try n times if blank
+      while [ 1 ] ;  do
+      	backend=$(/usr/lib/cups/backend/snmp $IP)
+      	test "$backend" = "" && echo -en "." && continue 
+      	echo
+        break
+      done
       # result:
       #   network lpd://192.168.1.2:515/PASSTHRU "EPSON Series" "EPSON Series"
     else
@@ -62,6 +95,10 @@ if [ "$YN" != "n" ]; then
     echo "uri: $URI"
     echo "name: $NAME"
 
+    read -p "Change search name? [n]/or enter new: " NEWNAME
+    test "$NEWNAME" != "" -a "$NEWNAME" != "n" \
+    && NAME=$NEWNAME && echo "name: $NAME"
+
     set -x
     # sudo systemctl start org.cups.cupsd.service
     sudo systemctl start cups
@@ -72,17 +109,39 @@ if [ "$YN" != "n" ]; then
       echo "// Try searching for printer name in available printer driver packages:"
       echo "//  apt-file search \".*$NAME.*ppd\""
       echo "//  pkgfile -s -v -r -i \".*$NAME.*ppd\""
+      echo "// see drivers already locally available: lpinfo -m"
     fi
 
     echo
     echo "Select printer driver (or try without driver):"
 
     select _DRIVER in $DRIVERS; do break; done
+
     DRIVER=$(echo "$_DRIVER" | awk '{print $1}')
-    echo "Driver:"
-    echo $DRIVER
-    read -p "continue? (ctrl+c to exit) "
-   
+    echo "driver: $DRIVER"
+    echo 
+           
+    # Save printer?
+    read -p "Save printer? [n]/y " SAVEPRINTER
+    if [ "$SAVEPRINTER" == "y" ]; then
+      if test "$NAME" = "" ; then
+        read -p "Provide a name for saved printer " NAME
+      fi
+      PRINTERSAVE["$NAME"]="$URI $DRIVER"
+      tmp=$(declare -p PRINTERSAVE | sed -e 's/\[/\n\[/g' )
+      echo "$tmp" > "${PRINTERSAVEFILE}"
+      sudo chmod 744 "$PRINTERSAVEFILE"
+      cat "$PRINTERSAVEFILE"
+    fi
+fi
+
+# sudo systemctl start org.cups.cupsd.service
+sudo systemctl start cups
+
+if test "$URI" != "" ; then
+    echo
+    echo "Connecting to '$URI' with driver '$DRIVER'"
+    echo
     if test "$DRIVER" = ""; then
       set -x
       sudo lpadmin -p PRINTER -E -v $URI
@@ -92,16 +151,13 @@ if [ "$YN" != "n" ]; then
       sudo lpadmin -p PRINTER -E -v $URI  -m $DRIVER
       set +x
     fi
-
-    echo
-    echo "Available printer options"
-    lpoptions -d PRINTER -l
-    echo
 fi
 
+echo
+echo "Available printer options"
+lpoptions -d PRINTER -l
+echo
 
-# sudo systemctl start org.cups.cupsd.service
-sudo systemctl start cups
 echo "Use printer, example:"
 echo lpr -P PRINTER -o page-ranges=1 -# 1 -o Duplex=DuplexNoTumble -o PageSize=A4 -o fit-to-page -o ColorModel=CMYGray FILE
 echo "-# <number of copies>"
@@ -132,3 +188,4 @@ fi
 #ap list foomatic-db-nonfree         # no hp
 #ap list foomatic-db-gutenprint-ppds # not installed yet
 #ap list hplip                       # not installed yet
+#https://aur.archlinux.org/epson-inkjet-printer-escpr.git
