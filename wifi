@@ -48,19 +48,24 @@ test $err -eq 1 && exit 1
 usage_self ()
 {
   echo -en "usage: $(basename "$0") ";
-  grep  -P '^ {2,4}[^ \(\*]*\)' $0 \
+  grep  -P '^ {2,4}[^ \(]*\)' $0 \
   | sed -e 's/)//g' -e 's/ +/ /g' -e 's/--//g' \
   | xargs | sed 's/ /\|/g' ;
   echo "";
-  grep -P '^ {2,4}[^ \(\*]*\)' -A 30 $0 \
+  grep -P '^ {2,4}[^ \(]*\)' -A 30 $0 \
   | grep -P -B 1 '^ {2,4}#' \
-  | sed -e 's/# //' -e 's/--//g' ;
+  | sed -e 's/# //' -e 's/^--//' ;
   echo "";
 }
 
 #ETH="wlp3s0" #AKA Love SystemD or die!
 #ETH="wlan0"
 ETH=`ls /sys/class/net/|grep wl|head -1`
+
+SLOWCONNECT=0
+echo "$1" | grep -q '\--slow' \
+&& SLOWCONNECT=1 \
+&& shift
 
 # Wifi password db
 if [ -f "$WIFIPASSWDFILE" ]; then
@@ -144,9 +149,10 @@ case "$1" in
       exit
     fi
     $0 connect "${@}"
-    ;;
+  ;;
   connect|*)
   # connect to SSID passed as argument
+  # --slow connect ... to force slower dhcprequest time
     test "$1" == "connect" && shift
     test -z "$1" && $0 help && exit 1
 
@@ -216,8 +222,10 @@ case "$1" in
     sudo rm /tmp/dhclient.${ETH}.leases 2>/dev/null
     # clear default gw first
     sudo route del default 2>/dev/null # error on no default exist
-    echo "initial-interval 1;" > /tmp/dhclient.conf
-    echo "backoff-cutoff 2;" >> /tmp/dhclient.conf
+    if [ "$SLOWCONNECT" == "0" ]; then
+       echo "initial-interval 1;" > /tmp/dhclient.conf
+       echo "backoff-cutoff 2;" >> /tmp/dhclient.conf
+    fi
     echo "option rfc3442-classless-static-routes code 121 = array of unsigned integer 8;" \
       >> /tmp/dhclient.conf
     echo "request subnet-mask, broadcast-address, time-offset, routers, domain-name-servers, interface-mtu, rfc3442-classless-static-routes;" \
