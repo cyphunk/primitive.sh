@@ -135,13 +135,22 @@ case "$1" in
            | sed 's/ESSID:\| *Signal level\|Encryption key://g' \
            | sed 's/ on / on  /g' \
            | sort --field-separator="=" -k 1)
+    declare -a FOUNDSSIDS
     for knownssid in "${!WIFIPASSWD[@]}"; do
-      if [ "$(echo "$ssids" | grep "^$knownssid$")x" != "x" ]; then
-        echo "# Will connect to $knownssid"
-        set -- $knownssid
-        break
+      #echo "knownsside $knownssid"
+      if [ "$(echo "$ssids" | grep -E "^$knownssid$")x" != "x" ]; then
+        echo "# Found SSID '$knownssid'"
+        FOUNDSSIDS+=("$knownssid") 
       fi
     done
+    if [ ${#FOUNDSSIDS[@]} -gt 1 ]; then
+      echo "Select SSID"
+      select selectedssid in "${FOUNDSSIDS[@]}"; do break; done
+      set -- $selectedssid
+    elif [ ${#FOUNDSSIDS[@]} -eq 1 ]; then
+      echo "Set SSID to '${FOUNDSSIDS[0]}'"
+      set -- "${FOUNDSSIDS[0]}"
+    fi
     IFS=$oIFS
     if [ "$1" == "auto" ]; then
       echo "# no known ssid found"
