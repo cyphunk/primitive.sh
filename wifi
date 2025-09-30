@@ -82,7 +82,7 @@ case "$1" in
   monitor)
   # show current connection statistics
     command -v wavemon && wavemon || \
-    watch -t -n 1 "iwconfig 2>&1|grep SSID && cat /proc/net/wireless"
+    watch -t -n 1 "iw dev $ETH link 2>&1|grep SSID && cat /proc/net/wireless"
   ;;
   password)
   # print password for ssid argument
@@ -90,7 +90,7 @@ case "$1" in
   ;;
   status)
   # show current status of wifi card
-    iwconfig $ETH
+    iw dev $ETH link
     rfkill list wifi
   ;;
   off)
@@ -101,21 +101,25 @@ case "$1" in
   # list available ssids
     rfkill list wifi | grep -q yes && sudo rfkill unblock wifi 
     sudo ifconfig $ETH up
-    networks=$(sudo iwlist $ETH scanning)
+    networks=$(sudo iw dev $ETH scan)
     while [ $? -ne 0 ]; do  
       sleep 1
-      networks=$(sudo iwlist $ETH scanning)
+      networks=$(sudo iw dev $ETH scan)
     done
     echo "$networks" | \
-      grep -E 'ESSID|Quality|Encryption key:|Channel:|Address:' \
-      | xargs \
-      | sed \
-        -e 's/Cell [^ ]* \- Address:/\n/g' \
-        -e 's/Quality\|ESSID:/\t/g' \
-        -e 's/Signal:\| *Signal level\|Encryption key:\|Channel://g'  \
-      | sort --field-separator="=" -k 2
-    echo "   Quality: current/max ---^    ^"
-    echo "   Signal level: lower better --'"
+      grep -E '^BSS|[^B]SSID:|signal:|RSN:|WPA:|Privacy:' \
+        | sed -e 's/SSID:/\t/' \
+              -e 's/RSN:.*/(wpa2+)/' \
+              -e 's/WPA:.*/(wpa)/' \
+              -e 's/Privacy:.*/(encother)/' \
+              -e 's/signal://' \
+              -e 's/\.00 dBm/ dBm/' \
+              -e 's/\-\- associated//' \
+        | xargs \
+        | sed -e 's/BSS \([0-9a-f:]*\)([^)]*)/\n\1/g' \
+        | grep -v '^$' \
+        | sort -r -k 2 
+    echo "   Signal level ----^ lower better"
   ;;
   auto)
   # connect to first known ssid
@@ -124,17 +128,10 @@ case "$1" in
     sudo ifconfig $ETH up || exit
     oIFS=$IFS
     IFS=$'\n'
-    networks=$(sudo iwlist $ETH scanning)
+    networks=$(sudo iw dev $ETH scan)
     ssids=$(echo "$networks" \
-            | grep -E 'ESSID' \
-            | sed 's/ *ESSID:"\|"//g')
-    list=$(echo "$networks" \
-           | grep -E 'ESSID|Quality|Encryption key:' \
-           | xargs \
-           | sed 's/Quality=/\n/g' \
-           | sed 's/ESSID:\| *Signal level\|Encryption key://g' \
-           | sed 's/ on / on  /g' \
-           | sort --field-separator="=" -k 1)
+            | grep -E '[^B]SSID:' \
+            | sed -e 's/ *SSID: //g' -e 's/^[ \t]*//')
     declare -a FOUNDSSIDS
     for knownssid in "${!WIFIPASSWD[@]}"; do
       #echo "knownsside $knownssid"
@@ -154,7 +151,8 @@ case "$1" in
     IFS=$oIFS
     if [ "$1" == "auto" ]; then
       echo "# no known ssid found"
-      echo "$list"
+      echo "# listing available ssids..."
+      $0 list
       exit
     fi
     $0 connect "${@}"
@@ -195,7 +193,7 @@ case "$1" in
     if [ "$PASSWORD" == "" ]; then
       echo -e "\n# Connecting without password"
       set -x
-      sudo iwconfig $ETH essid "$1" key open || exit
+      sudo iw dev $ETH connect "$1" || exit
       set +x
       if [ $? -ne 0 ]; then
           echo "!! Error: couldn't connect"
@@ -204,9 +202,6 @@ case "$1" in
     else
       echo "# Connecting with password "
       tmpfile=$(mktemp)
-      #echo "# iwconfig with key"
-      #sudo nmcli dev wifi connect "$1" password "$PASSWORD"
-      #sudo iwconfig wlp3s0 essid "$1" key "s:$PASSWORD" \
       set -x
       wpa_passphrase "$1" "$PASSWORD" > $tmpfile  || exit
       set +x
